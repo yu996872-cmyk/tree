@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Merry Christmas</title>
+    <!-- 引入 Google Fonts 手写字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Noto+Sans+SC:wght@300;500&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000;
+            overflow: hidden; /* 防止滚动 */
+            font-family: 'Noto Sans SC', sans-serif;
+            color: white;
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out; /* 页面淡入效果 */
+        }
+
+        body.loaded {
+            opacity: 1;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            outline: none;
+        }
+
+        /* 文字 UI 覆盖层 */
+        #ui-layer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            text-align: center;
+            width: 100%;
+            pointer-events: none; /* 允许点击穿透，不影响3D旋转 */
+            user-select: none;
+        }
+
+        .title-en {
+            font-family: 'Great Vibes', cursive;
+            font-size: 5rem;
+            color: #fff;
+            text-shadow: 
+                0 0 10px rgba(255, 255, 255, 0.8),
+                0 0 20px rgba(0, 255, 255, 0.5),
+                0 0 40px rgba(0, 255, 255, 0.3);
+            margin-bottom: 10px;
+            animation: textGlow 3s infinite alternate;
+        }
+
+        .subtitle-cn {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 300;
+            letter-spacing: 4px;
+            color: rgba(255, 255, 255, 0.9);
+            text-shadow: 0 0 10px rgba(0, 200, 255, 0.6);
+        }
+
+        /* 简单的加载指示器 */
+        #loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #0ff;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        @keyframes textGlow {
+            0% {
+                text-shadow: 
+                    0 0 10px rgba(255, 255, 255, 0.8),
+                    0 0 20px rgba(0, 255, 255, 0.5);
+            }
+            100% {
+                text-shadow: 
+                    0 0 20px rgba(255, 255, 255, 1),
+                    0 0 40px rgba(0, 255, 255, 0.8),
+                    0 0 60px rgba(0, 100, 255, 0.6);
+            }
+        }
+
+        /* 移动端适配调整 */
+        @media (max-width: 768px) {
+            .title-en {
+                font-size: 3.5rem;
+            }
+            .subtitle-cn {
+                font-size: 1rem;
+            }
+        }
+    </style>
+    
+    <!-- 配置 Import Map 以使用模块化 Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="loader">正在准备礼物...</div>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="title-en">Merry Christmas</div>
+        <div class="subtitle-cn">圣诞快乐</div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- 全局变量 ---
+        let scene, camera, renderer, composer;
+        let treeGroup, backgroundGroup;
+        let controls;
+        const particles = [];
+        
+        // --- 初始化场景 ---
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // 1. 创建场景
+            scene = new THREE.Scene();
+            // 使用深色雾气增加景深感
+            scene.fog = new THREE.FogExp2(0x000000, 0.002);
+
+            // 2. 创建相机
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 20, 100);
+
+            // 3. 创建渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000);
+            // 启用色调映射以获得更好的光照效果
+            renderer.toneMapping = THREE.ReinhardToneMapping;
+            container.appendChild(renderer.domElement);
+
+            // 4. 控制器 (允许用户旋转查看，但禁用缩放以保持构图)
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enableZoom = true;
+            controls.maxDistance = 200;
+            controls.minDistance = 20;
+            // 自动旋转通常由相机完成，但这里我们旋转物体本身，所以稍微限制控制器的自动行为
+            controls.autoRotate = false; 
+
+            // 5. 生成纹理 (程序化生成，无需外部图片)
+            const particleTexture = createParticleTexture();
+
+            // 6. 创建圣诞树
+            createCrystalTree(particleTexture);
+
+            // 7. 创建背景环境 (星尘 + Bokeh)
+            createBackgroundEnvironment(particleTexture);
+
+            // 8. 后期处理 (Bloom 发光)
+            initPostProcessing();
+
+            // 9. 事件监听
+            window.addEventListener('resize', onWindowResize);
+            
+            // 移除加载文字，显示页面
+            document.getElementById('loader').style.display = 'none';
+            document.body.classList.add('loaded');
+
+            // 10. 开始动画循环
+            animate();
+        }
+
+        // --- 辅助函数：创建圆形辉光纹理 ---
+        function createParticleTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const context = canvas.getContext('2d');
+            
+            // 绘制径向渐变
+            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 32, 32);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        // --- 核心：创建粒子圣诞树 ---
+        function createCrystalTree(texture) {
+            treeGroup = new THREE.Group();
+            scene.add(treeGroup);
+
+            // 树身参数
+            const particleCount = 2500;
+            const height = 60;
+            const maxRadius = 25;
+
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const colors = [];
+            const sizes = [];
+
+            const colorPalette = [
+                new THREE.Color(0x00ffff), // 青色
+                new THREE.Color(0x00b7ff), // 深天蓝
+                new THREE.Color(0xffffff), // 白色
+                new THREE.Color(0xe0ffff)  // 淡青
+            ];
+
+            for (let i = 0; i < particleCount; i++) {
+                // 螺旋算法构建圆锥
+                const ratio = i / particleCount; 
+                // y 从下到上
+                const y = -height/2 + ratio * height;
+                
+                // 半径随高度减小 (圆锥形状)
+                const radiusAtHeight = maxRadius * (1 - ratio);
+                
+                // 角度螺旋
+                const angle = i * 0.15 + Math.random() * 0.5;
+                // 添加一些随机性让树看起来更自然，不那么像完美的几何体
+                const r = radiusAtHeight * (0.2 + 0.8 * Math.random()); 
+
+                const x = r * Math.cos(angle);
+                const z = r * Math.sin(angle);
+
+                positions.push(x, y, z);
+
+                // 颜色随机
+                const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+                colors.push(color.r, color.g, color.b);
+
+                // 大小随机 (底部大，顶部小)
+                sizes.push((Math.random() * 1.5 + 0.5)); 
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+
+            // 着色器材质或 PointsMaterial
+            // 这里使用 PointsMaterial 配合 vertexColors
+            const material = new THREE.PointsMaterial({
+                size: 1.0,
+                map: texture,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                transparent: true,
+                opacity: 0.9
+            });
+
+            const treeSystem = new THREE.Points(geometry, material);
+            treeGroup.add(treeSystem);
+
+            // --- 树顶星星/爱心 ---
+            const topGeometry = new THREE.BufferGeometry();
+            const topPositions = [];
+            const topColors = [];
+            
+            // 简单的球状聚集作为树顶
+            for(let i=0; i<100; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const r = Math.random() * 1.5; // 小球半径
+
+                const x = r * Math.sin(phi) * Math.cos(theta);
+                const y = (height/2 + 1) + r * Math.sin(phi) * Math.sin(theta); // 位于树顶
+                const z = r * Math.cos(phi);
+
+                topPositions.push(x, y, z);
+                topColors.push(1, 1, 0.8); // 暖白色/淡黄色
+            }
+
+            topGeometry.setAttribute('position', new THREE.Float32BufferAttribute(topPositions, 3));
+            topGeometry.setAttribute('color', new THREE.Float32BufferAttribute(topColors, 3));
+
+            const topMaterial = new THREE.PointsMaterial({
+                size: 2.5, // 更大的粒子
+                map: texture,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                transparent: true
+            });
+
+            const topStar = new THREE.Points(topGeometry, topMaterial);
+            treeGroup.add(topStar);
+        }
+
+        // --- 创建背景环境 (星尘 + 远处烟花效果) ---
+        function createBackgroundEnvironment(texture) {
+            backgroundGroup = new THREE.Group();
+            scene.add(backgroundGroup);
+
+            // 1. 微小星尘
+            const starsGeo = new THREE.BufferGeometry();
+            const starsPos = [];
+            for(let i=0; i<1500; i++) {
+                const x = (Math.random() - 0.5) * 400;
+                const y = (Math.random() - 0.5) * 400;
+                const z = (Math.random() - 0.5) * 200 - 50; // 稍微靠后
+                starsPos.push(x, y, z);
+            }
+            starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starsPos, 3));
+            const starsMat = new THREE.PointsMaterial({
+                color: 0x88ccff,
+                size: 0.6,
+                transparent: true,
+                opacity: 0.6,
+                map: texture,
+                blending: THREE.AdditiveBlending
+            });
+            const starSystem = new THREE.Points(starsGeo, starsMat);
+            backgroundGroup.add(starSystem);
+
+            // 2. Bokeh 散景效果 (大的模糊光点)
+            const bokehGeo = new THREE.BufferGeometry();
+            const bokehPos = [];
+            const bokehColors = [];
+            
+            for(let i=0; i<30; i++) {
+                const x = (Math.random() - 0.5) * 300;
+                const y = (Math.random() - 0.5) * 300;
+                const z = (Math.random() - 0.5) * 100 - 80; // 远景
+                bokehPos.push(x, y, z);
+                
+                // 随机颜色：紫色、蓝色、深青色
+                const col = new THREE.Color();
+                col.setHSL(Math.random() * 0.2 + 0.5, 0.8, 0.5);
+                bokehColors.push(col.r, col.g, col.b);
+            }
+            
+            bokehGeo.setAttribute('position', new THREE.Float32BufferAttribute(bokehPos, 3));
+            bokehGeo.setAttribute('color', new THREE.Float32BufferAttribute(bokehColors, 3));
+
+            const bokehMat = new THREE.PointsMaterial({
+                size: 10, // 很大
+                vertexColors: true,
+                map: texture,
+                transparent: true,
+                opacity: 0.2, // 很淡
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            
+            const bokehSystem = new THREE.Points(bokehGeo, bokehMat);
+            // 给这个系统一个特定的名字以便动画中引用
+            bokehSystem.name = "bokeh"; 
+            backgroundGroup.add(bokehSystem);
+        }
+
+        // --- 初始化后期处理 ---
+        function initPostProcessing() {
+            const renderScene = new RenderPass(scene, camera);
+
+            // Unreal Bloom 参数：分辨率, 强度, 半径, 阈值
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            bloomPass.threshold = 0; // 任何亮度都发光
+            bloomPass.strength = 2.0; // 强烈的发光
+            bloomPass.radius = 0.5;   // 扩散半径
+
+            composer = new EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+        }
+
+        // --- 窗口大小调整 ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- 动画循环 ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.001;
+
+            // 1. 旋转树
+            if(treeGroup) {
+                treeGroup.rotation.y += 0.003; // 缓慢自转
+                
+                // 让树有轻微的浮动感
+                treeGroup.position.y = Math.sin(time * 0.5) * 1.5;
+            }
+
+            // 2. 动画背景
+            if(backgroundGroup) {
+                // 整体微小旋转
+                backgroundGroup.rotation.y -= 0.0005;
+
+                // 找到 Bokeh 系统并单独移动粒子
+                const bokeh = backgroundGroup.children.find(c => c.name === "bokeh");
+                if(bokeh) {
+                    const positions = bokeh.geometry.attributes.position.array;
+                    for(let i=0; i<positions.length; i+=3) {
+                        // 缓慢上升
+                        positions[i+1] += 0.05;
+                        // 如果超出边界则重置到底部
+                        if(positions[i+1] > 150) positions[i+1] = -150;
+                    }
+                    bokeh.geometry.attributes.position.needsUpdate = true;
+                }
+            }
+
+            controls.update();
+            
+            // 使用 composer 渲染而不是默认 renderer
+            composer.render();
+        }
+
+        // 启动程序
+        init();
+
+    </script>
+</body>
+</html>
